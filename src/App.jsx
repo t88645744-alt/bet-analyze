@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 const SPORTS = ["Теннис", "Хөлбөмбөг", "Сагсан бөмбөг", "Хоккей", "Бокс", "MMA"];
 
 async function callAI(body) {
-  const res = await fetch("/api/analyze", {
+  const res = await fetch("/.netlify/functions/analyze", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
   });
   return res.json();
@@ -53,7 +53,7 @@ export default function App() {
   const loadLiveMatches = async () => {
     setLiveLoading(true);
     try {
-      const res = await fetch("/api/live-matches");
+      const res = await fetch("/.netlify/functions/live-matches");
       const data = await res.json();
       setLiveMatches(Array.isArray(data) ? data : []);
     } catch (_) { setLiveMatches([]); }
