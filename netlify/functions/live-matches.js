@@ -1,51 +1,48 @@
 exports.handler = async function(event, context) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return { statusCode: 500, body: JSON.stringify({ error: 'No API key' }) };
+  const rapidKey = process.env.RAPIDAPI_TENNIS_KEY;
+  if (!rapidKey) return { statusCode: 500, body: JSON.stringify({ error: 'No API key' }) };
 
   try {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
+    // Live matches
+    const liveRes = await fetch('https://tennis-api-atp-wta-itf.p.rapidapi.com/tennis/v2/live', {
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://tmk-analyze.netlify.app',
-      },
-      body: JSON.stringify({
-        model: 'meta-llama/llama-3.3-70b-instruct:free',
-        max_tokens: 1500,
-        messages: [{
-          role: 'user',
-          content: `Search the web and find current live and upcoming tennis matches today from ATP and WTA tours.
-Return ONLY a JSON array, no markdown, no explanation:
-[
-  {
-    "id": "unique_id",
-    "player1": "Full Name",
-    "player2": "Full Name", 
-    "tournament": "Tournament Name",
-    "surface": "Hard/Clay/Grass",
-    "status": "live" or "upcoming",
-    "score": "current score or start time",
-    "odds1": estimated decimal odds for player1,
-    "odds2": estimated decimal odds for player2
-  }
-]
-Return at least 5-8 matches. Only JSON array.`
-        }],
-        plugins: [{ id: "web" }]
-      }),
+        'x-rapidapi-host': 'tennis-api-atp-wta-itf.p.rapidapi.com',
+        'x-rapidapi-key': rapidKey
+      }
+    });
+    const liveData = await liveRes.json();
+
+    // Today's pre-match
+    const today = new Date().toISOString().split('T')[0];
+    const preRes = await fetch(`https://tennis-api-atp-wta-itf.p.rapidapi.com/tennis/v2/matches/date/${today}`, {
+      headers: {
+        'x-rapidapi-host': 'tennis-api-atp-wta-itf.p.rapidapi.com',
+        'x-rapidapi-key': rapidKey
+      }
+    });
+    const preData = await preRes.json();
+
+    const formatMatch = (m, status) => ({
+      id: m.id || m.match_id || Math.random().toString(36).slice(2),
+      player1: m.home?.name || m.player1?.name || m.homeTeam?.name || "?",
+      player2: m.away?.name || m.player2?.name || m.awayTeam?.name || "?",
+      tournament: m.tournament?.name || m.league?.name || m.competition?.name || "ATP/WTA",
+      surface: m.tournament?.surface || m.surface || "",
+      status: status,
+      score: m.score ? `${m.score.home || 0}-${m.score.away || 0}` : (m.startTime || m.time || ""),
+      odds1: m.odds?.home || m.homeOdds || null,
+      odds2: m.odds?.away || m.awayOdds || null,
     });
 
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || '[]';
-    const cleaned = text.replace(/```json|```/g, '').trim();
-    
+    const live = (liveData?.data || liveData?.matches || liveData?.events || []).slice(0, 10).map(m => formatMatch(m, "live"));
+    const pre = (preData?.data || preData?.matches || preData?.events || []).slice(0, 15).map(m => formatMatch(m, "upcoming"));
+
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: cleaned
+      body: JSON.stringify([...live, ...pre])
     };
   } catch (e) {
-    return { statusCode: 500, body: '[]' };
+    return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
   }
 };
